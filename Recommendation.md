@@ -1,23 +1,21 @@
-# Recommendation.md — Utility-Facing Summary
+# Recommendation — Utility Use of REFIT Washing-Machine Insights
 
-## Use case
+## Recommendation
 
-One-minute whole-house smart-meter readings can be analysed to estimate washing-machine activity and energy use. This may support exploratory customer insights, such as identifying typical operating times and discussing whether some cycles could be scheduled outside a utility-defined peak period. It should not be used for billing, customer penalties or guaranteed cycle identification without further validation.
+Use appliance disaggregation as an **advisory customer-insight layer**, not as a billing meter or automated control signal. In this REFIT sample, House 7 records 795 complete washing-machine cycles (10.66 per valid week), compared with 95 cycles (1.42 per valid week) in House 6. House 7 also has the highest observed washing-machine energy in the illustrative 16:00–20:00 window: 87.14 kWh, or 1.168 kWh per valid week. These are historical measurements, not achievable savings.
 
-## Evidence and suitable use
+A utility could use a locally validated model to identify households with frequent washing-machine operation during its actual peak period and offer opt-in scheduling prompts. The 16:00–20:00 and 17:00–21:00 windows used here are illustrative only, not REFIT tariff periods.
 
-The REFIT analysis uses aggregate-only inputs and holds out complete households during validation. The final six-household benchmark is still to be completed; therefore, this submission does not claim a measured level of predictive accuracy or quantified savings. A completed per-household LOHO evaluation is required before deciding whether the model is sufficiently reliable for customer-facing recommendations. Overall MAE alone is not enough because washing-machine demand is zero for much of the day.
+## How to measure impact
 
-## Potential energy insight
+Run a time-bounded pilot with an opt-in treatment group receiving prompts and a comparable control group receiving none. Compare baseline and intervention-period washing-machine kWh in the utility's actual peak window. Track shifted kWh per household, cycle completion time, engagement and persistence after prompts stop. Account for seasonality and household differences; where feasible, validate estimates against directly metered washing machines. REFIT is observational and cannot establish that prompts cause behaviour change.
 
-The notebook calculates observed washing-machine energy in illustrative local-time windows of 16:00–20:00 and 17:00–21:00. These are scenario windows, not official tariff periods. Energy observed in these windows is not automatically shiftable energy, and no tariff saving is inferred. A utility should substitute its actual peak window and establish which customers and cycles are flexible.
+## Suitability and limitations
 
-## How to measure an intervention
+HistGradientBoosting is the stronger learned model in this six-household LOHO experiment: macro event-state F1 is 0.356 versus 0.294 for Seq2Point, and relative energy error is 31.46% versus 44.91%. However, event F1 is modest and common-support coverage is 71.14% of the full minute grid (89.20% of valid target minutes). Performance varies by household. Use predictions for exploratory segmentation or pilot targeting only—not for billing, penalties or unattended automation.
 
-Run a pilot with a baseline period and an intervention period, preferably with a comparable control group. Measure peak-window kWh per household, energy shifted, recommendation engagement and persistence of behaviour change. REFIT is observational, so it cannot establish that a recommendation causes savings.
+Aggregate signatures overlap: kettles, heaters and other loads can resemble washing-machine demand. Missing readings, issue flags, provider-filled intervals and household-specific programmes further limit identification. The cohort contains six UK homes; transfer to India is not established. Machine types and programmes, voltage and metering characteristics, and other household loads may differ. Collect representative Indian aggregate and appliance-labelled data and validate by household before deployment.
 
-## Limitations and transfer to India
+With 15- or 30-minute readings, short appliance phases are averaged together. ON/OFF transitions, cycle boundaries and overlapping signatures become harder to distinguish, although interval energy may remain measurable. Event-level appliance attribution would be less precise and require validation at the intended meter resolution.
 
-Appliance signatures overlap, the selected REFIT cohort is small and UK-specific, and aggregate and sub-meter sensors may not be perfectly synchronised. Washing-machine designs and programmes, internal water heating, semi-automatic operation, appliance mix (including air conditioners, geysers and inverters/UPS), supply-voltage variation and metering practices may differ in Indian homes. Local labelled data and external validation are necessary before deployment in India.
-
-With 15- or 30-minute readings, short phases, ON/OFF transitions and cycle boundaries become less identifiable, and overlapping loads are harder to separate. Interval energy can still be estimated, but appliance-level timing and cycle detection are less reliable.
+**Decision:** proceed only with a monitored, opt-in insight pilot after local validation. Treat REFIT as evidence that aggregate-only washing-machine estimation is worth exploring—not proof of deployable accuracy or quantified savings.

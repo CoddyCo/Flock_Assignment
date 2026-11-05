@@ -1,86 +1,148 @@
-# Flock REFIT NILM — Washing-Machine Disaggregation
+# Flock Energy — REFIT Washing-Machine Disaggregation
 
 ## Project overview
 
-This project investigates whether one-minute whole-house electricity demand can be used to estimate the power consumed by a washing machine. It uses the REFIT domestic electricity dataset and follows the stages of a practical non-intrusive load monitoring (NILM) workflow: raw-data quality assessment, household and appliance selection, washing-machine usage analysis, aggregate-only modelling, household-level validation, and interpretation for an energy utility.
+This project builds a reproducible, one-minute non-intrusive load-monitoring (NILM) workflow using the University of Strathclyde's REFIT Electrical Load Measurements dataset. It covers the four parts of the Flock Energy take-home assignment:
 
-The washing-machine sub-meter is the **regression target**, not a model input. Predictive features are derived from the household aggregate signal and time information. Other appliance sub-meter channels are not used as model features.
+1. Audit and clean the **raw House 1** measurements, then resample them to one-minute intervals.
+2. Explore washing-machine operation in the official cleaned data for six eligible households.
+3. Estimate washing-machine power from whole-house aggregate power and evaluate the models with **Leave-One-Household-Out (LOHO)** validation.
+4. Translate observed usage into a cautious utility-facing opportunity and document the limits of the analysis.
 
-## Main notebook
+The complete implementation is in the Jupyter notebook `final_notebook.ipynb`. The numerical results in the companion documents are taken from its completed execution on 5 November 2026.
 
-The analysis is implemented in one self-contained Google Colab notebook:
+## Repository contents
 
-`flock_refit_final_colab_cuda_memory_fixed.ipynb`
+The notebook expects the following local project layout:
 
-The notebook contains the ingestion, cleaning, event-detection, feature-engineering, baseline, HistGradientBoosting, Seq2Point, evaluation and plotting code. It does not require a separate source-code ZIP to execute.
+```text
+project/
+├── final_notebook.ipynb
+├── requirements-local.txt
+├── README.md
+├── DATA.md
+├── RESULTS.md
+├── Recommendation.md
+├── data/
+│   ├── archives/
+│   │   ├── REFIT_RAW_081116.7z
+│   │   ├── CLEAN_REFIT_081116.7z
+│   │   └── CLEAN_READ_ME_081116.txt
+│   ├── refit_data_final/       # extracted CSV files
+│   └── processed/
+│       └── final_v7/           # one-minute Parquet files
+├── outputs/
+│   ├── metrics/
+│   └── figures/
+│       ├── data_quality/
+│       ├── eda/
+│       └── modelling/
+└── models/
+```
 
-### Run in Google Colab
+The raw archive is used for the House 1 cleaning exercise. The official cleaned archive is used for multi-household EDA and model development. Do not substitute the raw House 1 target for the cleaned-data model target.
 
-1. Upload the notebook to Google Colab.
-2. Place the following source files in `MyDrive/flock-refit-archives/`:
-   - `REFIT_RAW_081116.7z`
-   - `CLEAN_REFIT_081116.7z`
-   - `CLEAN_READ_ME_081116.txt`
-3. Run the notebook sequentially from the beginning. The raw and cleaned CSV files are extracted to Colab local storage; processed files, figures and metrics are saved to Google Drive.
-4. The notebook uses the following output locations:
-   - Project outputs: `MyDrive/flock-refit-nilm-final/`
-   - Processed Parquet files: `MyDrive/flock-refit-processed/final_v7/`
-5. For a fresh, reproducible run, execute all upstream data and feature-preparation cells before running model evaluation. Do not combine metrics from different notebook runs.
+## Local setup and execution
 
-The notebook installs `py7zr` and `pyarrow` when they are unavailable. HistGradientBoosting runs on CPU; the optional Seq2Point CNN uses CUDA when available.
+The final notebook was executed in a local macOS environment using Python 3.11.15 and PyTorch's Apple MPS device. The notebook selects an available accelerator (MPS, CUDA or CPU) and retains CPU fallback.
 
-## Analysis workflow
+1. Create and activate a virtual environment:
 
-| Stage | Work performed |
-|---|---|
-| Raw-data audit | Inspect raw House 1, timestamps, duplicates, invalid measurements, coverage, gaps and outages; resample to one-minute values. |
-| Household selection and EDA | Read the official cleaned-data README for appliance mappings; verify the selected households; detect washing-machine events and compare usage patterns. |
-| Feature engineering | Construct aggregate-only lag, rolling-statistic and calendar features. Keep the washing-machine target separate. |
-| Modelling | Compare always-off and training-derived hour-of-week baselines with HistGradientBoosting. A Seq2Point CNN is included as a supplementary temporal experiment. |
-| Validation | Use Leave-One-Household-Out (LOHO): one entire household is held out while the other selected households provide training data. |
-| Interpretation | Review event detection, power and energy errors, household variation, failure cases, and illustrative energy in evening time windows. |
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
 
-## Key methodological decisions
+2. Install the dependencies listed in `requirements-local.txt`:
 
-- **Household cohort:** preferred candidates are Houses 1, 2, 5, 6, 7 and 8. The notebook verifies their dedicated `Washing Machine` channel and data eligibility against the official README and data files. If a candidate fails the documented eligibility rules, the selection code applies its deterministic replacement rule. `Washer Dryer` is not treated as equivalent to `Washing Machine`.
-- **Time:** Unix timestamps are treated as UTC. `Europe/London` is used when calculating local hour/day summaries.
-- **Resolution:** source readings are resampled to one-minute mean power. The primary minute-coverage criterion is at least 50% of the expected source readings.
-- **Duplicates and invalid readings:** exact duplicates are removed; conflicting readings at the same timestamp are collapsed by per-channel median. Negative appliance readings are marked missing. Raw appliance readings above the documented 4,000 W limit are marked missing; unusually high aggregate readings are flagged for review rather than automatically discarded.
-- **Gaps:** only complete internal gaps of one or two minutes are interpolated. Leading/trailing gaps and longer gaps remain missing. The measured washing-machine target is not interpolated for regression training or scoring.
-- **Provider-filled data:** aggregate-based zero-fill and forward-fill patterns are flagged as potential provider filling. These are quality-control heuristics, not proof of a sensor outage.
-- **Cycle definition:** candidate ON minutes exceed 20 W; OFF gaps shorter than 13 valid minutes are merged; the merged event must span at least 27 minutes. This operational rule is based on a REFIT-specific published reference and is not a universal definition of a wash cycle. Events longer than 240 minutes are separately flagged as suspect-fill candidates by a project quality-control rule.
-- **Features:** aggregate current, aggregate lags, rolling statistics and calendar features. Appliance sub-meter channels and household identifiers are excluded from model inputs.
-- **Training cap:** up to 200,000 sampled rows per training household per fold, preserving the observed ON/OFF distribution.
-- **Validation:** the held-out household's target is not used for fitting, feature-scaler fitting, baseline construction or model selection. It is reserved for evaluation.
+   ```bash
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements-local.txt
+   ```
 
-## Metrics and interpretation
+   The notebook also checks the active Jupyter kernel and installs missing runtime dependencies into that interpreter. Main libraries include NumPy, pandas, scikit-learn, PyTorch, Matplotlib, PyArrow and py7zr.
 
-The notebook reports power-estimation errors (MAE, RMSE and R² where defined), ON/OFF precision/recall/F1, active/event-period error, energy error and evaluation coverage. Per-household outcomes should be examined alongside macro averages. Overall MAE alone is not sufficient: washing machines are inactive for much of the timeline, so an always-off predictor can appear competitive on that metric.
+3. Place the two REFIT `.7z` archives and `CLEAN_READ_ME_081116.txt` in `data/archives/`.
 
-The final benchmark values are generated from executed metric files. See `RESULTS.md`; values are intentionally not hard-coded in this README.
+4. Start Jupyter from the project directory and run `final_notebook.ipynb` from top to bottom:
 
-## Current submission status
+   ```bash
+   jupyter lab
+   ```
 
-The current working run successfully completed the Seq2Point training stage for the House 1 fold with finite training and validation losses. The six-household LOHO benchmark was not yet complete at the time these documents were prepared. Consequently, no final six-fold model metrics or claims of cross-household performance are made here. Update `RESULTS.md` and the recommendation after the completed benchmark CSVs have been saved.
+   The notebook uses the current working directory as the project root by default. Set `FLOCK_REFIT_HOME` before launching Jupyter if you need a different project root.
 
-## Limitations
+5. Outputs are written to `data/processed/final_v7/`, `outputs/metrics/`, `outputs/figures/` and `models/`.
 
-REFIT contains a limited number of UK households. Aggregate and appliance sub-meter measurements may not be perfectly synchronised, appliance signatures can overlap, and the cleaned release may contain provider-filled periods whose original outages cannot be fully reconstructed. Results on REFIT do not establish performance in Indian households or across all washing-machine designs. A local labelled dataset and external validation would be required before deployment.
+**Fast restart:** when the cleaned one-minute Parquet files, `household_summary.csv` and `detected_cycles.csv` already exist, use the notebook's fast-resume route. It skips archive extraction, raw House 1 cleaning and the earlier EDA, rebuilds aggregate-only model features, and reruns all six LOHO folds. The fast-resume checks stop if any required file is absent.
+
+## Data selection and preprocessing decisions
+
+- **Household cohort:** Houses 1, 2, 5, 6, 7 and 8. Selection is based on a dedicated README-mapped `Washing Machine` channel, available files and sufficient usable coverage/cycles. Solar-affected Houses 3, 11 and 21 are excluded; House 4 has two washing-machine channels; House 13 has a documented channel-change note. A `Washer Dryer` channel is not treated as a washing-machine substitute.
+- **Time:** Unix timestamps are converted to timezone-aware UTC. London local time is used only for hour/day-of-week analysis.
+- **Resolution:** source readings are resampled to one-minute means. A minute is valid when at least 50% of the expected source readings are present.
+- **Duplicates:** exact duplicate rows are removed. Conflicting rows at the same timestamp are collapsed using a per-channel median; the `Issues` flag uses the maximum so any flagged duplicate keeps the minute flagged.
+- **Gaps/outliers:** negative readings and invalid numeric/infinite values are set to missing (except negative aggregate readings in solar-affected homes, which are retained by the cleaning function). Raw appliance/IAM readings above 4,000 W are set to missing. Aggregate readings above 23,000 W are flagged, not silently deleted. Only complete internal gaps of one or two minutes are interpolated in the cleaning pipeline; longer outages and edge gaps remain missing. Suspected provider-fill intervals are protected from interpolation.
+- **Cycle rule:** strictly above 20 W; merge fully observed OFF gaps shorter than 13 minutes; then keep merged envelopes of at least 27 minutes. Events longer than 240 minutes are separately flagged as `suspect_fill` by this project's quality-control rule.
+- **Targets and predictors:** model inputs contain aggregate-derived information only. Appliance sub-meter readings are used for the training target, labels and evaluation, not as predictors. Issue-flagged target minutes and suspect-fill event intervals are excluded from regression fitting/scoring. The measured target itself is not interpolated for regression.
+
+Detailed decisions and raw-data audit results are in [DATA.md](DATA.md).
+
+## Models and validation design
+
+Four approaches are compared:
+
+- **Always-off baseline:** predicts 0 W.
+- **Hour-of-week profile:** predicts the training-house mean for the same weekday/hour, with a training-set global-mean fallback.
+- **HistGradientBoostingRegressor (HistGBR):** uses current aggregate power, aggregate lags (1, 5, 10, 30 and 60 minutes), first differences, rolling mean/standard deviation/maximum features (5, 15, 30 and 60 minutes), and local calendar features. Configuration: 100 iterations, learning rate 0.1, 31 leaf nodes, L2 regularisation 1.0 and random seed 42. Training is capped at 200,000 labelled rows per training household.
+- **Seq2Point CNN:** uses a centred 121-minute aggregate window (60 minutes on either side of the centre) to predict the centre-minute washing-machine power. It has three 1-D convolution blocks (32, 64 and 64 channels), two max-pooling layers, adaptive average pooling to 10 positions, and a small dense regression head. It uses weighted Huber loss, a training-only input scaler, a chronological validation tail from training households, a maximum of 8 epochs and patience 3. The training cap is 125,000 windows and 25,000 validation windows per fold across the five training households. Inference uses aggregate readings only.
+
+LOHO holds out one complete household at a time: the other five households are used for fitting, and this is repeated for all six selected homes. The held-out household's appliance target is not used for training, preprocessing fit, early stopping or model selection. For direct comparison, all four approaches are scored on the common support where the 121-minute aggregate context exists and the measured target is valid. Coverage is reported against both the full household minute grid and valid target minutes.
+
+The Seq2Point model uses future aggregate context because its window is centred. It is therefore a retrospective/offline estimate, not a causal real-time predictor. HistGBR's engineered features use current and past aggregate values.
+
+## Results at a glance
+
+On the common LOHO support, HistGBR has the strongest overall balance of event detection, regression and energy estimation:
+
+- HistGBR macro event-state F1: **0.356**; Seq2Point: **0.294**.
+- HistGBR macro MAE/RMSE: **23.36 W / 136.35 W**; Seq2Point: **25.85 W / 144.00 W**.
+- Mean relative energy error: **31.46%** for HistGBR and **44.91%** for Seq2Point.
+- Mean common-support coverage: **71.14% of the full minute grid**, or **89.20% of valid target minutes**.
+
+The always-off baseline has the lowest all-minute MAE (16.03 W), but its event-state F1 is zero. This illustrates why zero-dominated appliance data should not be judged by MAE alone. HistGBR is the most defensible model from this experiment, but its event F1 and event-envelope errors are not strong enough for unsupervised operational decisions. Full results, per-house variation and failure examples are in [RESULTS.md](RESULTS.md).
+
+## Assumptions, trade-offs and limitations
+
+- The six-house cohort is a rule-based, manageable sample, not all 20 REFIT homes.
+- The 20 W / 27-minute ON / 13-minute OFF rule is a published REFIT-specific operating definition, not a universal washing-machine definition.
+- `suspect_fill` (>240-minute event envelope) is a project QC flag, not proof of a bad sensor value.
+- One-minute data preserve more temporal structure than 15- or 30-minute interval readings. Lower-resolution data would make cycle boundaries and appliance attribution less precise.
+- Household variation, missingness, asynchronous sub-meter readings and overlapping appliance signatures limit generalisation.
+- Results from UK REFIT homes must not be assumed to transfer to Indian homes without local validation.
 
 ## AI assistance
 
-AI assistance was used for implementation support, debugging, code review and documentation refinement. Data-quality findings, plots and quantitative model results must be generated by executing the notebook on the supplied REFIT data; unexecuted or partial model runs are not presented as final results.
+ChatGPT was used during development for debugging, implementation review, performance troubleshooting and preparation of the submission documentation. The reported numerical results are taken from the executed notebook outputs, not generated estimates. The notebook itself contains the code, run outputs, synthetic checks and exported evidence manifest.
+
+## Reproducibility outputs
+
+After a complete run, the notebook exports 55 evidence files (metrics, audit outputs, figures and environment information) into `flock_refit_evidence_for_reports.zip`. Key numerical outputs include:
+
+- `outputs/metrics/house1_raw_audit_summary.json`
+- `outputs/metrics/household_selection.csv`
+- `outputs/metrics/household_summary.csv`
+- `outputs/metrics/detected_cycles.csv`
+- `outputs/metrics/usage_summary.csv`
+- `outputs/metrics/peak_window_energy.csv`
+- `outputs/metrics/loho_results.csv`
+- `outputs/metrics/loho_macro.csv`
+- `outputs/metrics/failure_cases.csv`
+- `outputs/metrics/environment_versions.json`
+
+The notebook also runs synthetic checks for interpolation, provider-fill protection, event merging, missing-gap splitting, energy calculation, vectorised event masks and event-support coverage.
 
 ## References
 
-1. Murray, D., Stankovic, L. and Stankovic, V. (2017). “An electrical load measurements dataset of United Kingdom households from a two-year longitudinal study.” *Scientific Data*, 4, 160122. https://doi.org/10.1038/sdata.2016.122
-2. Manca, M. M. and Massidda, L. (2022). “Deep learning based non-intrusive load monitoring with low resolution data from smart meters.” *Communications in Applied and Industrial Mathematics*, 13(1), 39–56. https://doi.org/10.2478/caim-2022-0004
-3. Kelly, J. and Knottenbelt, W. (2015). “Neural NILM: Deep Neural Networks Applied to Energy Disaggregation.” *BuildSys 2015*. https://doi.org/10.1145/2821650.2821672
-4. Zhang, C., Zhong, M., Wang, Z., Goddard, N. and Sutton, C. (2018). “Sequence-to-Point Learning With Neural Networks for Non-Intrusive Load Monitoring.” *Proceedings of AAAI*, 32(1), 2604–2611. https://doi.org/10.1609/aaai.v32i1.11873
-
-## What I would do next
-
-- Complete and save all LOHO folds, then regenerate the metric tables and plots from the saved outputs.
-- Analyse at least two concrete held-out failure cases and verify that results are consistent with the event-detection audit.
-- Evaluate the model on additional eligible households and on locally labelled data before considering deployment.
-- If time permits, compare the optional Seq2Point model with HistGradientBoosting on exactly matched evaluation timestamps.
+1. University of Strathclyde, **REFIT Electrical Load Measurements** dataset and official cleaned-data README: [dataset page](https://pureportal.strath.ac.uk/en/datasets/refit-electrical-load-measurements/) · [cleaned-data README](https://pure.strath.ac.uk/ws/portalfiles/portal/62090183/CLEAN_READ_ME_081116.txt).
+2. Manca, M. M. and Massidda, L. (2022). “Deep learning based non-intrusive load monitoring with low resolution data from smart meters.” *Communications in Applied and Industrial Mathematics*, 13(1), 39–56. DOI: [10.2478/caim-2022-0004](https://doi.org/10.2478/caim-2022-0004). Table 2 is the source used for the REFIT washing-machine 20 W, 13-minute OFF and 27-minute ON settings.
